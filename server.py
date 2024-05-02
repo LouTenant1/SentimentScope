@@ -2,7 +2,6 @@ from flask import Flask, request, jsonify
 import os
 from dotenv import load_dotenv
 from functools import wraps
-from werkzeug.security import generate_password_hash, check_password_hash
 from flask_sqlalchemy import SQLAlchemy
 from concurrent.futures import ThreadPoolExecutor
 
@@ -13,6 +12,7 @@ SECRET_KEY = os.environ.get("SECRET_KEY")
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URI
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
 db = SQLAlchemy(app)
 
 class SentimentData(db.Model):
@@ -25,12 +25,12 @@ with app.app_context():
 
 def token_required(f):
     @wraps(f)
-    def decorated_function(*args, **kwargs):
+    def decorated(*args, **kwargs):
         token = request.headers.get('Authorization')
         if not token or token != SECRET_KEY:
             return jsonify({"message": "Unauthorized"}), 401
         return f(*args, **kwargs)
-    return decorated_function
+    return decorated
 
 executor = ThreadPoolExecutor(2)
 
@@ -53,10 +53,9 @@ def submit_data():
 @token_required
 def fetch_data():
     sentiments = SentimentData.query.all()
-    results = []
-    for sentiment in sentiments:
-        obj = {"id": sentiment.id, "data": sentiment.data, "sentiment": sentiment.sentiment}
-        results.append(obj)
+    results = [ 
+        {"id": sentiment.id, "data": sentiment.data, "sentiment": sentiment.sentiment} for sentiment in sentiments
+    ]
     return jsonify(results), 200
 
 @app.route('/api/statistics', methods=['GET'])
