@@ -1,13 +1,14 @@
 from flask import Flask, request, jsonify
-import os
-from dotenv import load_dotenv
-from functools import wraps
 from flask_sqlalchemy import SQLAlchemy
 from concurrent.futures import ThreadPoolExecutor
+from dotenv import load_dotenv
+from functools import wraps
+import os
 
 load_dotenv()
-DATABASE_URI = os.environ.get("DATABASE_URI")
-SECRET_KEY = os.environ.get("SECRET_KEY")
+
+DATABASE_URI = os.getenv("DATABASE_URI")
+SECRET_KEY = os.getenv("SECRET_KEY")
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URI
@@ -43,17 +44,20 @@ def submit_data():
     data = request.json.get('data')
     if not data:
         return jsonify({"error": "Data is required!"}), 400
+
     sentiment = executor.submit(get_sentiment, data).result()
+
     sentiment_data = SentimentData(data=data, sentiment=sentiment)
     db.session.add(sentiment_data)
     db.session.commit()
+
     return jsonify({"message": "Data submitted successfully", "sentiment": sentiment}), 201
 
 @app.route('/api/data', methods=['GET'])
 @token_required
 def fetch_data():
     sentiments = SentimentData.query.all()
-    results = [ 
+    results = [
         {"id": sentiment.id, "data": sentiment.data, "sentiment": sentiment.sentiment} for sentiment in sentiments
     ]
     return jsonify(results), 200
@@ -63,10 +67,11 @@ def fetch_data():
 def statistics():
     total = SentimentData.query.count()
     positive = SentimentData.query.filter_by(sentiment="Positive").count()
+    negative = total - positive
     return jsonify({
         "total": total,
         "positive_sentiments": positive,
-        "negative_sentiments": total - positive
+        "negative_sentiments": negative
     }), 200
 
 if __name__ == '__main__':
