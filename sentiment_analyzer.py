@@ -8,6 +8,8 @@ from sklearn.pipeline import make_pipeline
 from sklearn.metrics import classification_report
 import pandas as pd
 import numpy as np
+from joblib import dump, load
+import hashlib
 
 nlp = spacy.load("en_core_web_sm")
 
@@ -15,6 +17,8 @@ class SentimentAnalyzer:
     def __init__(self):
         self.sia = SentimentIntensityAnalyzer()
         self.model = None
+        # Dictionary to store cached preprocessed texts
+        self.text_cache = {}
 
     def nltk_analyze(self, text):
         score = self.sia.polarity_scores(text)
@@ -26,9 +30,16 @@ class SentimentAnalyzer:
             return 'neutral'
 
     def spacy_preprocess(self, text):
+        # Creating a hash of the text to use as a key for caching
+        text_hash = hashlib.sha256(text.encode('utf-8')).hexdigest()
+        if text_hash in self.text_cache:
+            return self.text_cache[text_hash]
+
         doc = nlp(text)
         tokens = [token.lemma_ for token in doc if token.is_alpha and not token.is_stop]
-        return ' '.join(tokens)
+        processed_text = ' '.join(tokens)
+        self.text_cache[text_hash] = processed_text
+        return processed_text
 
     def train_classifier(self, data_path):
         df = pd.read_csv(data_path)
@@ -41,16 +52,47 @@ class SentimentAnalyzer:
         predictions = self.model.predict(X_test)
         print(classification_report(y_test, predictions))
 
+        # Saving the model
+        dump(self.model, 'sentiment_model.joblib')
+
     def predict(self, text):
         if not self.model:
-            raise ValueError("Model is not trained. Call train_classifier() first.")
+            try:
+                # Attempt to load the model from disk if not already loaded
+                self.model = load('sentiment_model.joblib')
+            except FileNotFoundError:
+                raise ValueError("Model is not trained or loaded. Call train_classifier() first or ensure the model file exists.")
+
         processed_text = self.spacy_preprocess(text)
         return self.model.predict([processed_text])[0]
+    
+    def evaluate_new_data(self, data_path):
+        # Ensure the model is loaded or trained
+        if not self.model:
+            try:
+                self.model = load('sentiment_model.joblib')
+            except FileNotFoundError:
+                raise ValueError("Model is not trained or loaded. Train or load the model first.")
+        
+        df = pd.read_csv(data_path)
+        df['processed_text'] = df['text'].apply(self.spacy_preprocess)
+        X = df['processed_text']
+        y = df['sentiment']
+        predictions = self.model.predict(X)
+        print(classification_report(y, predictions))
 
 if __name__ == "__main__":
     DATA_PATH = os.getenv('DATA_PATH', 'path/to/your/dataset.csv')
 
     analyzer = SentimentAnalyzer()
-    analyzer.train_classifier(DATA_PATH)
+
+    # Train or simply load the model for prediction
+    # If training for the first time, uncomment the following line
+    # analyzer.train_classifier(DATA_PATH)
+
     example_feedback = "This product has been excellent in my experience, I definitely recommend it!"
     print(f"Sentiment: {analyzer.predict(example_feedback)}")
+
+    # Evaluate the model on a new dataset (optional)
+    # NEW_DATA_PATH = 'path/to/new/dataset.csv'
+    # analyzer.evaluate_new_data(NEW_DATA_PATH)
