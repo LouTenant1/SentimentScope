@@ -47,6 +47,21 @@ const App = () => {
     }
   }
 
+  const downloadCSV = () => {
+    const header = 'Date,Label,Value\n';
+    const rows = sentimentData.dates.flatMap((date, index) =>
+      sentimentData.sentiments.map((sentiment) => `${date},${sentiment.label},${sentiment.value}`)
+    );
+    const csvString = [header, ...rows].join('\n');
+    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.setAttribute('download', 'sentiment_analysis_data.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const { sentiments, dates } = sentimentData;
 
   const pieData = {
@@ -94,6 +109,7 @@ const App = () => {
         <DatePicker selected={startDate} onChange={(date) => setStartDate(date)} />
         <DatePicker selected={endDate} onChange={(date) => setEndDate(date)} />
         <input type="text" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter by Source/Label"/>
+        <button onClick={downloadCSV}>Download CSV</button>
       </div>
       <div>
         <h2>Sentiment Distribution</h2>
