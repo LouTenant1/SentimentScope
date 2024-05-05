@@ -2,10 +2,10 @@ import os
 import requests
 from bs4 import BeautifulSoup
 import re
-from dotenv import load_dotenv
 import json
 import pymysql
 from textblob import TextBlob
+from contextlib import closing
 
 load_dotenv()
 
@@ -14,30 +14,30 @@ DATABASE_HOST = os.getenv('DATABASE_HOST')
 DATABASE_USER = os.getenv('DATABASE_USER')
 DATABASE_PASSWORD = os.getenv('DATABASE_PASSWORD')
 DATABASE_NAME = os.getenv('DATABASE_NAME')
+HEADERS = {"Authorization": f"Bearer {TWITTER_BEARER_TOKEN}"}
+REQUEST_SESSION = requests.Session()
 
 def fetch_tweets(keyword, max_results=10):
-    headers = {"Authorization": f"Bearer {TWITTER_BEARER_TOKEN}"}
     url = f"https://api.twitter.com/2/tweets/search/recent?query={keyword}&max_results={max_results}"
     try:
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()  # Raises stored HTTPError, if occurred.
-        return json.loads(response.text)['data']
+        response = REQUEST_SESSION.get(url, headers=HEADERS)
+        response.raise_for_status()
+        return json.loads(response.text).get('data', [])
     except requests.exceptions.RequestException as e:
         print(f"Failed to fetch tweets: {e}")
         return []
-
+        
 def fetch_feedback_from_db():
     try:
-        connection = pymysql.connect(host=DATABASE_HOST,
+        with closing(pymysql.connect(host=DATABASE_HOST,
                                      user=DATABASE_USER,
                                      password=DATABASE_PASSWORD,
                                      database=DATABASE_NAME,
                                      charset='utf8mb4',
-                                     cursorclass=pymysql.cursors.DictCursor)
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT * FROM feedback")
-            result = cursor.fetchall()
-            return result
+                                     cursorclass=pymysql.cursors.DictCursor)) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT * FROM feedback")
+                return cursor.fetchall()
     except pymysql.MySQLError as e:
         print(f"Database connection failed: {e}")
         return []
@@ -46,12 +46,11 @@ def scrape_website(urls):
     all_comments = []
     for url in urls:
         try:
-            response = requests.get(url)
-            response.raise_for_status()  # Raises stored HTTPError, if occurred.
+            response = REQUEST_SESSION.get(url)
+            response.raise_for_status()
             soup = BeautifulSoup(response.text, 'html.parser')
             comments = soup.find_all(class_='feedback-comment-class')
-            feedback_list = [comment.get_text().strip() for comment in comments]
-            all_comments += feedback_list
+            all_comments.extend([comment.get_text().strip() for comment in comments])
         except requests.exceptions.RequestException as e:
             print(f"Failed to scrape {url}: {e}")
     return all_comments
@@ -72,15 +71,14 @@ def collect_and_preprocess_data():
     feedback_db = fetch_feedback_from_db()
     scraped_feedback = scrape_website(["https://example.com/feedback", "https://anotherexample.com/comments"])
 
-    all_cleaned_feedback = [
-        {"text": clean_text(item['text']), "sentiment": analyze_sentiment(item['text'])} for item in tweets
-    ] + [
-        {"text": clean_text(item['text']), "sentiment": analyze_sentiment(item['text'])} for item in feedback_db
-    ] + [
-        {"text": clean_text(item), "sentiment": analyze_sentiment(item)} for item in scraped_feedback
-    ]
+    all_feedback = tweets + [{"text": item['text']} for item in feedback_db] + [{"text": text} for text in scraped_feedback]
 
-    return all_cleaned_feedback
+    for feedback in all_feedback:
+        clean = clean_text(feedback['text'])
+        feedback['text'] = clean
+        feedback['sentiment'] = analyze_sentiment(clean)
+
+    return all_feedback
 
 def save_data_to_file(data, filename='collected_feedback.json'):
     with open(filename, 'w', encoding='utf-8') as f:
