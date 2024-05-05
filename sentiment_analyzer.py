@@ -42,18 +42,29 @@ class SentimentAnalyzer:
         return processed_text
 
     def train_classifier(self, data_path):
-        df = pd.read_csv(data_path)
-        df['processed_text'] = df['text'].apply(self.spacy_preprocess)
-        X = df['processed_text']
-        y = df['sentiment']
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-        self.model = make_pipeline(TfidfVectorizer(), LogisticRegression(max_iter=1000))
-        self.model.fit(X_train, y_train)
-        predictions = self.model.predict(X_test)
-        print(classification_report(y_test, predictions))
+        try:
+            df = pd.read_csv(data_path)
+        except FileNotFoundError:
+            print(f"The file {data_path} was not found.")
+            return
+        except Exception as e:
+            print(f"An error occurred while reading the dataset: {str(e)}")
+            return
+        
+        try:
+            df['processed_text'] = df['text'].apply(self.spacy_preprocess)
+            X = df['processed_text']
+            y = df['sentiment']
+            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+            self.model = make_pipeline(TfidfVectorizer(), LogisticRegression(max_iter=1000))
+            self.model.fit(X_train, y_train)
+            predictions = self.model.predict(X_test)
+            print(classification_report(y_test, predictions))
 
-        # Saving the model
-        dump(self.model, 'sentiment_model.joblib')
+            # Saving the model
+            dump(self.model, 'sentiment_model.joblib')
+        except Exception as e:
+            print(f"An error occurred during training: {str(e)}")
 
     def predict(self, text):
         if not self.model:
@@ -61,25 +72,48 @@ class SentimentAnalyzer:
                 # Attempt to load the model from disk if not already loaded
                 self.model = load('sentiment_model.joblib')
             except FileNotFoundError:
-                raise ValueError("Model is not trained or loaded. Call train_classifier() first or ensure the model file exists.")
+                print("Model is not trained or loaded. Call train_classifier() first or ensure the model file exists.")
+                return "Error: Model not loaded"
+            except Exception as e:
+                print(f"An error occurred while loading the model: {str(e)}")
+                return "Error: Model load failure"
 
         processed_text = self.spacy_preprocess(text)
-        return self.model.predict([processed_text])[0]
-    
+        try:
+            return self.model.predict([processed_text])[0]
+        except Exception as e:
+            print(f"An error occurred during prediction: {str(e)}")
+            return "Error: Prediction failure"
+
     def evaluate_new_data(self, data_path):
         # Ensure the model is loaded or trained
         if not self.model:
             try:
                 self.model = load('sentiment_model.joblib')
             except FileNotFoundError:
-                raise ValueError("Model is not trained or loaded. Train or load the model first.")
-        
-        df = pd.read_csv(data_path)
-        df['processed_text'] = df['text'].apply(self.spacy_preprocess)
-        X = df['processed_text']
-        y = df['sentiment']
-        predictions = self.model.predict(X)
-        print(classification_report(y, predictions))
+                print("Model is not trained or loaded. Train or load the model first.")
+                return
+            except Exception as e:
+                print(f"Could not load the model: {str(e)}")
+                return
+
+        try:
+            df = pd.read_csv(data_path)
+        except FileNotFoundError:
+            print(f"The file {data_path} was not found.")
+            return
+        except Exception as e:
+            print(f"An error occurred while reading the dataset: {str(e)}")
+            return
+
+        try:
+            df['processed_text'] = df['text'].apply(self.spacy_preprocess)
+            X = df['processed_text']
+            y = df['sentiment']
+            predictions = self.model.predict(X)
+            print(classification_report(y, predictions))
+        except Exception as e:
+            print(f"An error occurred during evaluation: {str(e)}")
 
 if __name__ == "__main__":
     DATA_PATH = os.getenv('DATA_PATH', 'path/to/your/dataset.csv')
@@ -87,11 +121,15 @@ if __name__ == "__main__":
     analyzer = SentimentAnalyzer()
 
     # Train or simply load the model for prediction
-    # If training for the first time, uncomment the following line
+    # Uncomment the following line if training for the first time
     # analyzer.train_classifier(DATA_PATH)
 
     example_feedback = "This product has been excellent in my experience, I definitely recommend it!"
-    print(f"Sentiment: {analyzer.predict(example_feedback)}")
+    sentiment = analyzer.predict(example_feedback)
+    if not sentiment.startswith("Error"):
+        print(f"Sentiment: {sentiment}")
+    else:
+        print(sentiment)
 
     # Evaluate the model on a new dataset (optional)
     # NEW_DATA_PATH = 'path/to/new/dataset.csv'
