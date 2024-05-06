@@ -1,8 +1,15 @@
+from functools import lru_cache
+
+@lru_cache(maxsize=512)
+def analyze_sentiment(text):
+    # Placeholder for sentiment analysis logic
+    return "Positive"
+
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from concurrent.futures import ThreadPoolExecutor
 from dotenv import load_dotenv
-from functools import wraps
+from functools import wraps, lru_cache
 import os
 
 load_dotenv()
@@ -35,7 +42,9 @@ def requires_authorization(f):
 
 executor = ThreadPoolExecutor(2)
 
+@lru_cache(maxsize=512)
 def analyze_sentiment(text):
+    # Placeholder for the actual sentiment analysis process.
     return "Positive"
 
 @app.route('/api/sentiment', methods=['POST'])
@@ -44,7 +53,7 @@ def submit_text_sentiment():
     text = request.json.get('data')
     if not text:
         return jsonify({"error": "Data is required!"}), 400
-
+    
     analyzed_sentiment = executor.submit(analyze_sentiment, text).result()
 
     new_sentiment_record = SentimentRecord(text_data=text, text_sentiment=analyzed_sentiment)
