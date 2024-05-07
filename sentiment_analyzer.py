@@ -11,7 +11,11 @@ import numpy as np
 from joblib import dump, load
 import hashlib
 
-nlp = spacy.load("en_core_web_sm")
+try:
+    nlp = spacy.load("en_core_web_sm")
+except Exception as e:
+    print(f"An error occurred loading SpaCy's model: {e}")
+    raise
 
 class SentimentAnalyzer:
     def __init__(self):
@@ -21,25 +25,33 @@ class SentimentAnalyzer:
         self.text_cache = {}
 
     def nltk_analyze(self, text):
-        score = self.sia.polarity_scores(text)
-        if score['compound'] > 0:
-            return 'positive'
-        elif score['compound'] < 0:
-            return 'negative'
-        else:
-            return 'neutral'
+        try:
+            score = self.sia.polarity_scores(text)
+            if score['compound'] > 0:
+                return 'positive'
+            elif score['compound'] < 0:
+                return 'negative'
+            else:
+                return 'neutral'
+        except Exception as e:
+            print(f"An error occurred during NLTK analysis: {str(e)}")
+            return "Error: NLTK analysis failure"
 
     def spacy_preprocess(self, text):
-        # Creating a hash of the text to use as a key for caching
-        text_hash = hashlib.sha256(text.encode('utf-8')).hexdigest()
-        if text_hash in self.text_cache:
-            return self.text_cache[text_hash]
+        try:
+            # Creating a hash of the text to use as a key for caching
+            text_hash = hashlib.sha256(text.encode('utf-8')).hexdigest()
+            if text_hash in self.text_cache:
+                return self.text_cache[text_hash]
 
-        doc = nlp(text)
-        tokens = [token.lemma_ for token in doc if token.is_alpha and not token.is_stop]
-        processed_text = ' '.join(tokens)
-        self.text_cache[text_hash] = processed_text
-        return processed_text
+            doc = nlp(text)
+            tokens = [token.lemma_ for token in doc if token.is_alpha and not token.is_stop]
+            processed_text = ' '.join(tokens)
+            self.text_cache[text_hash] = processed_text
+            return processed_text
+        except Exception as e:
+            print(f"An error occurred during SpaCy preprocessing: {e}")
+            return ""  # Returning an empty string to avoid breaking the flow
 
     def train_classifier(self, data_path):
         try:
@@ -80,13 +92,13 @@ class SentimentAnalyzer:
 
         processed_text = self.spacy_preprocess(text)
         try:
-            return self.model.predict([processed_text])[0]
+            prediction = self.model.predict([processed_text])[0]
+            return prediction
         except Exception as e:
             print(f"An error occurred during prediction: {str(e)}")
             return "Error: Prediction failure"
 
     def evaluate_new_data(self, data_path):
-        # Ensure the model is loaded or trained
         if not self.model:
             try:
                 self.model = load('sentiment_model.joblib')
