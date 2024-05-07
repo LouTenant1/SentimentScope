@@ -6,6 +6,7 @@ import json
 import pymysql
 from textblob import TextBlob
 from contextlib import closing
+from dotenv import load_dotenv
 
 load_dotenv()
 
@@ -26,6 +27,10 @@ def fetch_tweets(keyword, max_results=10):
     except requests.exceptions.RequestException as e:
         print(f"Failed to fetch tweets: {e}")
         return []
+    except json.JSONDecodeError as e:
+        print(f"Failed to decode response: {e}")
+        return []
+
         
 def fetch_feedback_from_db():
     try:
@@ -39,7 +44,7 @@ def fetch_feedback_from_db():
                 cursor.execute("SELECT * FROM feedback")
                 return cursor.fetchall()
     except pymysql.MySQLError as e:
-        print(f"Database connection failed: {e}")
+        print(f"Database connection or operation failed: {e}")
         return []
 
 def scrape_website(urls):
@@ -53,6 +58,8 @@ def scrape_website(urls):
             all_comments.extend([comment.get_text().strip() for comment in comments])
         except requests.exceptions.RequestException as e:
             print(f"Failed to scrape {url}: {e}")
+        except Exception as e:
+            print(f"Unexpected error while scraping {url}: {e}")
     return all_comments
 
 def clean_text(text):
@@ -63,8 +70,12 @@ def clean_text(text):
     return text
 
 def analyze_sentiment(text):
-    analysis = TextBlob(text)
-    return 'positive' if analysis.sentiment.polarity > 0 else 'negative' if analysis.sentiment.polarity < 0 else 'neutral'
+    try:
+        analysis = TextBlob(text)
+        return 'positive' if analysis.sentiment.polarity > 0 else 'negative' if analysis.sentiment.polarity < 0 else 'neutral'
+    except Exception as e:
+        print(f"Sentiment analysis failed: {e}")
+        return 'neutral'  # Fallback to neutral if analysis fails
 
 def collect_and_preprocess_data():
     tweets = fetch_tweets("customer feedback")
@@ -81,8 +92,11 @@ def collect_and_preprocess_data():
     return all_feedback
 
 def save_data_to_file(data, filename='collected_feedback.json'):
-    with open(filename, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=4)
+    try:
+        with open(filename, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=4)
+    except IOError as e:
+        print(f"Error saving data to {filename}: {e}")
 
 if __name__ == "__main__":
     collected_data = collect_and_preprocess_data()
