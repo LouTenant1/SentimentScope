@@ -1,10 +1,10 @@
 import os
 import requests
-from bs4 import BeautifulSoup
-import re
 import json
+import re
 import pymysql
 from textblob import TextBlob
+from bs4 import BeautifulSoup
 from contextlib import closing
 from dotenv import load_dotenv
 
@@ -15,6 +15,7 @@ DATABASE_HOST = os.getenv('DATABASE_HOST')
 DATABASE_USER = os.getenv('DATABASE_USER')
 DATABASE_PASSWORD = os.getenv('DATABASE_PASSWORD')
 DATABASE_NAME = os.getenv('DATABASE_NAME')
+
 HEADERS = {"Authorization": f"Bearer {TWITTER_BEARER_TOKEN}"}
 REQUEST_SESSION = requests.Session()
 
@@ -22,16 +23,12 @@ def fetch_tweets(keyword, max_results=10):
     url = f"https://api.twitter.com/2/tweets/search/recent?query={keyword}&max_results={max_results}"
     try:
         response = REQUEST_SESSION.get(url, headers=HEADERS)
-        response.raise_for_status()
+        response.raise_for_status()  
         return json.loads(response.text).get('data', [])
     except requests.exceptions.RequestException as e:
         print(f"Failed to fetch tweets: {e}")
         return []
-    except json.JSONDecodeError as e:
-        print(f"Failed to decode response: {e}")
-        return []
 
-        
 def fetch_feedback_from_db():
     try:
         with closing(pymysql.connect(host=DATABASE_HOST,
@@ -72,17 +69,19 @@ def clean_text(text):
 def analyze_sentiment(text):
     try:
         analysis = TextBlob(text)
-        return 'positive' if analysis.sentiment.polarity > 0 else 'negative' if analysis.sentiment.polarity < 0 else 'neutral'
+        return 'positive' if analysis.sentiment.polarity > 0 else \
+               'negative' if analysis.sentiment.polarity < 0 else 'neutral'
     except Exception as e:
         print(f"Sentiment analysis failed: {e}")
-        return 'neutral'  # Fallback to neutral if analysis fails
+        return 'neutral'
 
 def collect_and_preprocess_data():
     tweets = fetch_tweets("customer feedback")
     feedback_db = fetch_feedback_from_db()
     scraped_feedback = scrape_website(["https://example.com/feedback", "https://anotherexample.com/comments"])
 
-    all_feedback = tweets + [{"text": item['text']} for item in feedback_db] + [{"text": text} for text in scraped_feedback]
+    all_feedback = tweets + [{"text": item['text']} for item in feedback_db] + \
+                    [{"text": text} for text in scraped_feedback]
 
     for feedback in all_feedback:
         clean = clean_text(feedback['text'])
